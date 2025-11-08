@@ -1,9 +1,5 @@
-project = "autodeployr"
-
 [build]
-builder = "heroku/buildpacks:20"
-buildCommand = "pip install -r flask-demo/requirements.txt"
+root = "flask-demo"
 
 [deploy]
 startCommand = "python app.py"
-root = "flask-demo"
