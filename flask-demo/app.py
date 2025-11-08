@@ -1,5 +1,12 @@
-from flask import Flask, jsonify, request from flask_cors import CORS import os import tempfile import shutil 
-import zipfile import requests import json import base64
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+import os
+import tempfile
+import shutil
+import zipfile
+import requests
+from urllib.parse import urlparse
+
 
 app = Flask(__name__)
 CORS(app)
