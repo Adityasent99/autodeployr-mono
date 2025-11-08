@@ -1,6 +1,76 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
+import tempfile
+import shutil
+import zipfile
+import requests
+import json
+import base64
+
+app = Flask(__name__)
+CORS(app)
+
+@app.route('/')
+def home():
+    return jsonify({"message": "AutoDeployr Backend Running"}), 200
+
+@app.route('/health')
+def health():
+    return jsonify({"status": "healthy"}), 200
+
+@app.route('/deploy-static', methods=['POST'])
+def deploy_static():
+    try:
+        data = request.get_json()
+        repo_url = data.get("url")
+
+        if not repo_url:
+            return jsonify({"error": "Missing repository URL"}), 400
+
+        tmp_dir = tempfile.mkdtemp()
+        zip_url = repo_url.rstrip('/') + "/archive/refs/heads/main.zip"
+        zip_path = os.path.join(tmp_dir, "repo.zip")
+
+        r = requests.get(zip_url)
+        if r.status_code != 200:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return jsonify({"error": "Could not download repo ZIP"}), 400
+
+        with open(zip_path, "wb") as f:
+            f.write(r.content)
+
+        extract_dir = os.path.join(tmp_dir, "repo")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+
+        extracted_root = os.listdir(extract_dir)[0]
+        repo_path = os.path.join(extract_dir, extracted_root)
+
+        static_root = None
+        for root, dirs, files in os.walk(repo_path):
+            if "index.html" in files:
+                static_root = root
+                break
+
+        if not static_root:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+            return jsonify({"error": "No index.html found"}), 400
+
+        return jsonify({
+            "status": "ok",
+            "repo_name": extracted_root,
+            "static_root": static_root
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
+
 import io, re, shutil, tempfile, zipfile
 from urllib.parse import urlparse
 import requests
@@ -127,8 +197,7 @@ def deploy_static():
 
         deployed_url = deploy_to_vercel(static_root)
 
-        shutil.rmtree(repo_path, ignore_errors=True)
-@app.route('/deploy-static', methods=['POST'])
+        shutil.rmtree(repo_path, ignore_errors=True@app.route('/deploy-static', methods=['POST'])
 def deploy_static():
     try:
         data = request.get_json()
@@ -164,6 +233,7 @@ def deploy_static():
         repo_path = os.path.join(extract_dir, extracted_root)
 
         # Detect static root (folder containing index.html)
+        # Detect static root (folder containing index.html)
         static_root = None
         for root, dirs, files in os.walk(repo_path):
             if "index.html" in files:
@@ -184,58 +254,7 @@ def deploy_static():
         return jsonify({"error": str(e)}), 500
 
 
-
-
-# ------------ SERVER START ------------ #
-@app.route('/deploy-to-vercel', methods=['POST'])
-def deploy_to_vercel():
-    try:
-        data = request.get_json()
-        static_root = data.get("static_root")
-
-        if not static_root or not os.path.exists(static_root):
-            return jsonify({"error": "Invalid static_root"}), 400
-
-        VERCEL_TOKEN = os.environ.get("VERCEL_TOKEN")
-        if not VERCEL_TOKEN:
-            return jsonify({"error": "VERCEL_TOKEN is missing in environment variables"}), 500
-
-        # Create a minimal vercel.json
-        vercel_json = {
-            "version": 2,
-            "routes": [
-                { "src": "/(.*)", "dest": "/index.html" }
-            ]
-        }
-
-        temp_dir = tempfile.mkdtemp()
-        shutil.copytree(static_root, os.path.join(temp_dir, "dist"))
-        with open(os.path.join(temp_dir, "vercel.json"), "w") as f:
-            json.dump(vercel_json, f)
-
-        # Zip everything for upload
-        zip_path = os.path.join(temp_dir, "deploy.zip")
-        shutil.make_archive(zip_path.replace(".zip", ""), 'zip', temp_dir)
-
-        # Upload to Vercel
-        with open(zip_path, "rb") as f:
-            upload = requests.post(
-                "https://api.vercel.com/v13/deployments",
-                files={"file": f},
-                headers={"Authorization": f"Bearer {VERCEL_TOKEN}"}
-            )
-
-        resp = upload.json()
-        if "url" not in resp:
-            return jsonify({"error": resp}), 500
-
-        deployed_url = "https://" + resp["url"]
-        return jsonify({"status": "deployed ✅", "url": deployed_url}), 200
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
 
