@@ -1,5 +1,6 @@
 [build]
-root = "flask-demo"
+builder = "NIXPACKS"
 
-[deploy]
-startCommand = "python app.py"
+[start]
+cmd = "cd flask-demo && gunicorn app:app --bind 0.0.0.0:$PORT"
+
