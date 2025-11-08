@@ -192,6 +192,53 @@ def deploy_static():
 
 
 # ------------ SERVER START ------------ #
+@app.route('/deploy-to-vercel', methods=['POST'])
+def deploy_to_vercel():
+    try:
+        data = request.get_json()
+        static_root = data.get("static_root")
+
+        if not static_root or not os.path.exists(static_root):
+            return jsonify({"error": "Invalid static_root"}), 400
+
+        VERCEL_TOKEN = os.environ.get("VERCEL_TOKEN")
+        if not VERCEL_TOKEN:
+            return jsonify({"error": "VERCEL_TOKEN is missing in environment variables"}), 500
+
+        # Create a minimal vercel.json
+        vercel_json = {
+            "version": 2,
+            "routes": [
+                { "src": "/(.*)", "dest": "/index.html" }
+            ]
+        }
+
+        temp_dir = tempfile.mkdtemp()
+        shutil.copytree(static_root, os.path.join(temp_dir, "dist"))
+        with open(os.path.join(temp_dir, "vercel.json"), "w") as f:
+            json.dump(vercel_json, f)
+
+        # Zip everything for upload
+        zip_path = os.path.join(temp_dir, "deploy.zip")
+        shutil.make_archive(zip_path.replace(".zip", ""), 'zip', temp_dir)
+
+        # Upload to Vercel
+        with open(zip_path, "rb") as f:
+            upload = requests.post(
+                "https://api.vercel.com/v13/deployments",
+                files={"file": f},
+                headers={"Authorization": f"Bearer {VERCEL_TOKEN}"}
+            )
+
+        resp = upload.json()
+        if "url" not in resp:
+            return jsonify({"error": resp}), 500
+
+        deployed_url = "https://" + resp["url"]
+        return jsonify({"status": "deployed ✅", "url": deployed_url}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 8080))
