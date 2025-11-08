@@ -128,16 +128,67 @@ def deploy_static():
         deployed_url = deploy_to_vercel(static_root)
 
         shutil.rmtree(repo_path, ignore_errors=True)
+@app.route('/deploy-static', methods=['POST'])
+def deploy_static():
+    try:
+        data = request.get_json()
+        repo_url = data.get("url")
+
+        # Validate URL
+        if not repo_url or "github.com" not in repo_url:
+            return jsonify({"error": "Invalid or missing GitHub repo URL"}), 400
+
+        # Convert GitHub repo URL to ZIP download
+        repo_zip = repo_url.rstrip('/') + "/archive/refs/heads/main.zip"
+
+        temp_dir = tempfile.mkdtemp()
+        zip_path = os.path.join(temp_dir, "repo.zip")
+
+        # Download ZIP
+        r = requests.get(repo_zip)
+        if r.status_code != 200:
+            shutil.rmtree(temp_dir)
+            return jsonify({"error": "Could not download repo ZIP"}), 400
+
+        with open(zip_path, "wb") as f:
+            f.write(r.content)
+
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(temp_dir)
+
+        # Locate extracted folder
+        extracted = [d for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))]
+        if not extracted:
+            shutil.rmtree(temp_dir)
+            return jsonify({"error": "Could not extract repository"}), 400
+
+        repo_path = os.path.join(temp_dir, extracted[0])
+
+        # Look for static root
+        possible_dirs = ["dist", "build", "public", ""]
+        static_root = None
+
+        for d in possible_dirs:
+            test_path = os.path.join(repo_path, d)
+            if os.path.exists(os.path.join(test_path, "index.html")):
+                static_root = test_path
+                break
+
+        if not static_root:
+            shutil.rmtree(temp_dir)
+            return jsonify({"error": "No index.html found"}), 400
+
+        shutil.rmtree(temp_dir)
 
         return jsonify({
-            "status": "deployed",
-            "url": deployed_url
+            "status": "static site extracted successfully ✅",
+            "message": "Next step: upload to Vercel",
+            "static_root": static_root
         }), 200
-
-       
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 # ------------ SERVER START ------------ #
