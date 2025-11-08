@@ -54,6 +54,45 @@ def analyze_repo():
             "deployable": False,
             "reason": "No index.html found in repository"
         })
+import subprocess
+import tempfile
+import shutil
+import requests
+
+@app.route('/deploy-static', methods=['POST'])
+def deploy_static():
+    data = request.get_json()
+    repo_url = data.get('url')
+    if not repo_url:
+        return jsonify({'error': 'URL missing'}), 400
+
+    vercel_token = os.environ.get("VERCEL_TOKEN")
+    if not vercel_token:
+        return jsonify({'error': 'VERCEL_TOKEN not set'}), 500
+
+    temp_dir = tempfile.mkdtemp()
+    try:
+        subprocess.run(["git", "clone", repo_url, temp_dir], check=True)
+
+        # Deploy to Vercel using CLI
+        deploy_cmd = [
+            "npx", "vercel", temp_dir,
+            "--token", vercel_token,
+            "--yes",
+            "--prod"
+        ]
+
+        result = subprocess.run(deploy_cmd, capture_output=True, text=True)
+        output = result.stdout.strip()
+
+        deployed_url = output.split()[-1]
+        return jsonify({"status": "success", "url": deployed_url})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    finally:
+        shutil.rmtree(temp_dir)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
