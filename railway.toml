@@ -1,0 +1,5 @@
+[build]
+root = "flask-demo"
+
+[deploy]
+startCommand = "python app.py"
