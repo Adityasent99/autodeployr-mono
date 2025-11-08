@@ -134,60 +134,55 @@ def deploy_static():
         data = request.get_json()
         repo_url = data.get("url")
 
-        # Validate URL
-        if not repo_url or "github.com" not in repo_url:
-            return jsonify({"error": "Invalid or missing GitHub repo URL"}), 400
+        if not repo_url:
+            return jsonify({"error": "Missing repo URL"}), 400
 
-        # Convert GitHub repo URL to ZIP download
-        repo_zip = repo_url.rstrip('/') + "/archive/refs/heads/main.zip"
+        # Create temporary directory
+        tmp_dir = tempfile.mkdtemp()
 
-        temp_dir = tempfile.mkdtemp()
-        zip_path = os.path.join(temp_dir, "repo.zip")
+        # Download ZIP instead of git
+        zip_url = repo_url.rstrip('/') + "/archive/refs/heads/main.zip"
+        zip_path = os.path.join(tmp_dir, "repo.zip")
 
-        # Download ZIP
-        r = requests.get(repo_zip)
-        if r.status_code != 200:
-            shutil.rmtree(temp_dir)
+        response = requests.get(zip_url)
+        if response.status_code != 200:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             return jsonify({"error": "Could not download repo ZIP"}), 400
 
-        with open(zip_path, "wb") as f:
-            f.write(r.content)
+        with open(zip_path, 'wb') as f:
+            f.write(response.content)
+
+        # Extract zip
+        extract_dir = os.path.join(tmp_dir, "repo")
+        os.makedirs(extract_dir, exist_ok=True)
 
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extractall(temp_dir)
+            zip_ref.extractall(extract_dir)
 
-        # Locate extracted folder
-        extracted = [d for d in os.listdir(temp_dir) if os.path.isdir(os.path.join(temp_dir, d))]
-        if not extracted:
-            shutil.rmtree(temp_dir)
-            return jsonify({"error": "Could not extract repository"}), 400
+        # Find the extracted root folder inside
+        extracted_root = os.listdir(extract_dir)[0]
+        repo_path = os.path.join(extract_dir, extracted_root)
 
-        repo_path = os.path.join(temp_dir, extracted[0])
-
-        # Look for static root
-        possible_dirs = ["dist", "build", "public", ""]
+        # Detect static root (folder containing index.html)
         static_root = None
-
-        for d in possible_dirs:
-            test_path = os.path.join(repo_path, d)
-            if os.path.exists(os.path.join(test_path, "index.html")):
-                static_root = test_path
+        for root, dirs, files in os.walk(repo_path):
+            if "index.html" in files:
+                static_root = root
                 break
 
         if not static_root:
-            shutil.rmtree(temp_dir)
+            shutil.rmtree(tmp_dir, ignore_errors=True)
             return jsonify({"error": "No index.html found"}), 400
 
-        shutil.rmtree(temp_dir)
-
         return jsonify({
-            "status": "static site extracted successfully ✅",
-            "message": "Next step: upload to Vercel",
+            "status": "ok",
+            "repo_name": extracted_root,
             "static_root": static_root
         }), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 
 
