@@ -117,19 +117,24 @@ def deploy_static():
     if not repo_url:
         return jsonify({"error": "Missing url"}), 400
 
-    try:
-        repo_path, meta = download_and_extract(repo_url)
-        static_root = detect_static_root(repo_path)
+     try:
+       	 repo_path, meta = download_and_extract(repo_url)
+         static_root = detect_static_root(repo_path)
 
-        if not static_root:
+         if not static_root:
             shutil.rmtree(repo_path, ignore_errors=True)
             return jsonify({"error": "No index.html found"}), 400
 
+        deployed_url = deploy_to_vercel(static_root)
+
         shutil.rmtree(repo_path, ignore_errors=True)
+
         return jsonify({
             "status": "deployed",
-    "url": deployed_url
+            "url": deployed_url
         }), 200
+
+       
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
