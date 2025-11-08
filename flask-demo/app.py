@@ -4,6 +4,11 @@ import os
 import io, re, shutil, tempfile, zipfile
 from urllib.parse import urlparse
 import requests
+import base64
+import json
+import random
+import string
+
 
 app = Flask(__name__)
 CORS(app)
@@ -51,6 +56,59 @@ def detect_static_root(base):
         if os.path.isfile(os.path.join(path, "index.html")):
             return path
     return None
+VERCEL_TOKEN = os.environ.get("VERCEL_TOKEN")
+
+def random_suffix(n=6):
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
+def deploy_to_vercel(static_root):
+    if not VERCEL_TOKEN:
+        raise RuntimeError("Missing VERCEL_TOKEN environment variable")
+
+    project_name = f"autodeployr-auto-{random_suffix()}"
+
+    # 1) Create a Vercel project
+    r = requests.post(
+        "https://api.vercel.com/v9/projects",
+        headers={
+            "Authorization": f"Bearer {VERCEL_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        json={"name": project_name}
+    )
+
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Project creation failed: {r.text}")
+
+    # 2) Upload static files
+    files = {}
+    for root, _, filenames in os.walk(static_root):
+        for f in filenames:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, static_root)
+            with open(full, "rb") as fp:
+                files[rel] = base64.b64encode(fp.read()).decode()
+
+    deploy_payload = {
+        "project": project_name,
+        "files": [{"file": path, "data": content} for path, content in files.items()]
+    }
+
+    r = requests.post(
+        "https://api.vercel.com/v13/deployments",
+        headers={
+            "Authorization": f"Bearer {VERCEL_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        data=json.dumps(deploy_payload)
+    )
+
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Deployment failed: {r.text}")
+
+    deployment = r.json()
+    return f"https://{deployment['url']}"
+
 
 @app.route('/deploy-static', methods=['POST'])
 def deploy_static():
@@ -69,11 +127,8 @@ def deploy_static():
 
         shutil.rmtree(repo_path, ignore_errors=True)
         return jsonify({
-            "status": "ok",
-            "repo_owner": meta[0],
-            "repo_name": meta[1],
-            "branch": meta[2],
-            "static_root_found": True
+            "status": "deployed",
+    "url": deployed_url
         }), 200
 
     except Exception as e:
