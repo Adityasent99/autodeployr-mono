@@ -75,6 +75,42 @@ def deploy_static():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.post("/deploy-to-vercel")
+def deploy_to_vercel():
+    try:
+        data = request.get_json(silent=True) or {}
+        static_root = data.get("static_root")
+
+        if not static_root or not os.path.isdir(static_root):
+            return jsonify({"error": "Invalid static_root"}), 400
+        
+        # Create vercel.json config
+        vercel_json = os.path.join(static_root, "vercel.json")
+        with open(vercel_json, "w") as f:
+            f.write('{\n  "cleanUrls": true\n}\n')
+
+        # Deploy using Vercel CLI token
+        token = os.environ.get("VERCEL_TOKEN")
+        if not token:
+            return jsonify({"error": "Missing VERCEL_TOKEN env var"}), 400
+        
+        import subprocess
+        result = subprocess.run(
+            ["npx", "vercel", "--prod", "--token", token, static_root],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            return jsonify({"error": result.stderr}), 500
+
+        url = result.stdout.strip().split("\n")[-1]
+        return jsonify({"status": "deployed", "url": url}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
