@@ -2,7 +2,3 @@ Flask==2.3.3
 gunicorn
 flask-cors
 requests
-python-dotenv
-
-
-
