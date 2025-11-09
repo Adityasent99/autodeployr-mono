@@ -97,7 +97,7 @@ def deploy_to_vercel():
         
         import subprocess
         result = subprocess.run(
-            ["npx", "vercel", "--prod", "--token", token, static_root],
+            ["npx", "vercel", "deploy", "--yes", "--prod", "--token", token, static_root],
             capture_output=True,
             text=True
         )
@@ -112,6 +112,6 @@ def deploy_to_vercel():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.environ.get("PORT", 3001))
     app.run(host="0.0.0.0", port=port, debug=False)
 
