@@ -1,6 +1,6 @@
 [build]
-root = "flask-demo"
+builder = "Docker"
 
 [deploy]
-startCommand = "python app.py"
+restartPolicyType = "on_failure"
 
